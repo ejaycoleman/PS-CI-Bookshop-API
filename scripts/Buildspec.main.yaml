@@ -1,0 +1,57 @@
+version: 0.2
+
+phases:
+  build:
+    commands:
+      # Setup environment
+      - docker login -u $DOCKER_HUB_USER -p $DOCKER_HUB_TOKEN
+      - curl -LO https://github.com/planetscale/cli/releases/download/v0.112.0/pscale_0.112.0_linux_amd64.deb
+      - dpkg -i ./pscale_0.112.0_linux_amd64.deb
+      - pscale --version
+      # Build the project
+      - docker build --platform=linux/amd64 -t bookshop-api .
+      - aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $REPOSITORY_URI
+      - docker tag bookshop-api:latest $REPOSITORY_URI:main
+      - docker push $REPOSITORY_URI:main
+      # Deploy PlanetScale schema changes
+      - |
+        raw_output=`pscale password list "$DB_NAME" "$BRANCH_NAME" --org "$ORG_NAME" --format json --service-token "$PS_TOKEN" --service-token-id "$PS_TOKEN_ID"`
+        if [ $? -ne 0 ]; then
+            echo "Error: pscale password list returned non-zero exit code $?: $raw_output"
+            exit 1
+        fi
+        output=`echo $raw_output | jq -r "[.[] | select(.display_name == \"$ORG_NAME+creds\") ] | .[0].id "`
+        if [ "$output" != "null" ]; then
+            echo "Deleting existing password $output"
+            pscale password delete --force "$DB_NAME" "$BRANCH_NAME" "$output" --org "$ORG_NAME" --service-token "$PS_TOKEN" --service-token-id "$PS_TOKEN_ID"
+            if [ $? -ne 0 ]; then
+                echo "Error: pscale password delete returned non-zero exit code $?"
+                exit 1
+            fi
+        fi
+        raw_output=`pscale password create "$DB_NAME" "$BRANCH_NAME" "$ORG_NAME+creds" --org "$ORG_NAME" --format json --service-token "$PS_TOKEN" --service-token-id "$PS_TOKEN_ID`
+        if [ $? -ne 0 ]; then
+            echo "Failed to create credentials for database $DB_NAME branch $BRANCH_NAME: $raw_output"
+            exit 1
+        fi
+        DB_CONN_STR=`echo "$raw_output" |  jq -r ". | \"mysql://\" + .id +  \":\" + .plain_text +  \"@\" + .database_branch.access_host_url + \"/\""`
+        DR_NUM=$(pscale deploy-request create bookings_api "$BRANCH_NAME" --service-token $PS_TOKEN --service-token-id $PS_TOKEN_ID --org $PS_ORG --format json | jq '.number' )
+        DR_STATE=$(pscale deploy-request show bookings_api $DR_NUM --service-token $PS_TOKEN --service-token-id $PS_TOKEN_ID --org $PS_ORG --format json | jq -r '.deployment.state')
+        while [ "$DR_STATE" = "pending" ];
+        do
+          sleep 5
+          DR_STATE=$(pscale deploy-request show bookings_api $DR_NUM --service-token $PS_TOKEN --service-token-id $PS_TOKEN_ID --org $PS_ORG --format json | jq -r '.deployment.state')
+          echo "State: $DR_STATE"
+        done
+        if [ "$DR_STATE" = "no_changes" ]; then
+          pscale deploy-request close bookings_api $DR_NUM --service-token $PS_TOKEN --service-token-id $PS_TOKEN_ID --org $PS_ORG
+        else
+          pscale deploy-request deploy bookings_api $DR_NUM --service-token $PS_TOKEN --service-token-id $PS_TOKEN_ID --org $PS_ORG
+        fi
+      # Deploy
+      - |
+        aws lightsail create-container-service-deployment \
+          --region us-east-1 \
+          --service-name bookshop-api-service-main \
+          --containers "{\"bookshop-api-main\":{\"image\":\"$REPOSITORY_URI:main\",\"environment\":{\"LISTEN\":\"0.0.0.0:80\", \"DSN\":\"$DB_CONN_STR\"},\"ports\":{\"80\":\"HTTP\"}}}" \
+          --public-endpoint '{"containerName":"bookshop-api-main","containerPort":80,"healthCheck":{"path":"/"}}'
