@@ -15,21 +15,21 @@ phases:
       - docker push $REPOSITORY_URI:main
       # Deploy PlanetScale schema changes
       - |
-        raw_output=`pscale password list "$DB_NAME" "PR$CODEBUILD_SOURCE_VERSION" --org "$ORG_NAME" --format json --service-token "$PS_TOKEN" --service-token-id "$PS_TOKEN_ID"`
+        raw_output=`pscale password list "$DB_NAME" "PR$CODEBUILD_SOURCE_VERSION" --org "$PS_ORG" --format json --service-token "$PS_TOKEN" --service-token-id "$PS_TOKEN_ID"`
         if [ $? -ne 0 ]; then
             echo "Error: pscale password list returned non-zero exit code $?: $raw_output"
             exit 1
         fi
-        output=`echo $raw_output | jq -r "[.[] | select(.display_name == \"$ORG_NAME+creds\") ] | .[0].id "`
+        output=`echo $raw_output | jq -r "[.[] | select(.display_name == \"$PS_ORG+creds\") ] | .[0].id "`
         if [ "$output" != "null" ]; then
             echo "Deleting existing password $output"
-            pscale password delete --force "$DB_NAME" "PR$CODEBUILD_SOURCE_VERSION" "$output" --org "$ORG_NAME" --service-token "$PS_TOKEN" --service-token-id "$PS_TOKEN_ID"
+            pscale password delete --force "$DB_NAME" "PR$CODEBUILD_SOURCE_VERSION" "$output" --org "$PS_ORG" --service-token "$PS_TOKEN" --service-token-id "$PS_TOKEN_ID"
             if [ $? -ne 0 ]; then
                 echo "Error: pscale password delete returned non-zero exit code $?"
                 exit 1
             fi
         fi
-        raw_output=`pscale password create "$DB_NAME" "PR$CODEBUILD_SOURCE_VERSION" "$ORG_NAME+creds" --org "$ORG_NAME" --format json --service-token "$PS_TOKEN" --service-token-id "$PS_TOKEN_ID`
+        raw_output=`pscale password create "$DB_NAME" "PR$CODEBUILD_SOURCE_VERSION" "$PS_ORG+creds" --org "$PS_ORG" --format json --service-token "$PS_TOKEN" --service-token-id "$PS_TOKEN_ID`
         if [ $? -ne 0 ]; then
             echo "Failed to create credentials for database $DB_NAME branch PR$CODEBUILD_SOURCE_VERSION: $raw_output"
             exit 1
