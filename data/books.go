@@ -9,6 +9,7 @@ type Book struct {
 	Name    string
 	Author string
 	Blurb *string
+	Pages *int64
 }
 
 func FetchBooks() ([]Book, error) {
@@ -27,7 +28,7 @@ func FetchBooks() ([]Book, error) {
 
 	for rows.Next() {
 		var book Book
-		err = rows.Scan(&book.Id, &book.Name, &book.Author, &book.Blurb)
+		err = rows.Scan(&book.Id, &book.Name, &book.Author, &book.Blurb, &book.Pages)
 		if err != nil {
 			return nil, errors.Wrap(err, "(FetchBooks) rows.Scan")
 		}
