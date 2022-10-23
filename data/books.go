@@ -25,7 +25,7 @@ func FetchBooks() ([]Book, error) {
 	books := []Book{}
 
 	for rows.Next() {
-		var book Books
+		var book Book
 		err = rows.Scan(&book.Id, &book.Name, &book.Author)
 		if err != nil {
 			return nil, errors.Wrap(err, "(FetchBooks) rows.Scan")
@@ -44,7 +44,7 @@ func CreateBook(book *Book) error {
 
 	query := "INSERT INTO books (name, author) VALUES (?, ?)"
 
-	result, err := conn.Exec(query, book.Name, book.author)
+	result, err := conn.Exec(query, book.Name, book.Author)
 	if err != nil {
 		return errors.Wrap(err, "(CreateBook) conn.Exec")
 	}
