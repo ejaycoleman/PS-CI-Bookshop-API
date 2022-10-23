@@ -15,7 +15,7 @@ phases:
       - docker push $REPOSITORY_URI:main
       # Deploy PlanetScale schema changes
       - |
-        raw_output=`pscale password list "$DB_NAME" "PR$CODEBUILD_SOURCE_VERSION" --org "$PS_ORG" --format json --service-token "$PS_TOKEN" --service-token-id "$PS_TOKEN_ID"`
+        raw_output=`pscale password list "$DB_NAME" "PR${CODEBUILD_WEBHOOK_TRIGGER#*/}" --org "$PS_ORG" --format json --service-token "$PS_TOKEN" --service-token-id "$PS_TOKEN_ID"`
         if [ $? -ne 0 ]; then
             echo "Error: pscale password list returned non-zero exit code $?: $raw_output"
             exit 1
@@ -23,19 +23,19 @@ phases:
         output=`echo $raw_output | jq -r "[.[] | select(.display_name == \"$PS_ORG+creds\") ] | .[0].id "`
         if [ "$output" != "null" ]; then
             echo "Deleting existing password $output"
-            pscale password delete --force "$DB_NAME" "PR$CODEBUILD_SOURCE_VERSION" "$output" --org "$PS_ORG" --service-token "$PS_TOKEN" --service-token-id "$PS_TOKEN_ID"
+            pscale password delete --force "$DB_NAME" "PR${CODEBUILD_WEBHOOK_TRIGGER#*/}" "$output" --org "$PS_ORG" --service-token "$PS_TOKEN" --service-token-id "$PS_TOKEN_ID"
             if [ $? -ne 0 ]; then
                 echo "Error: pscale password delete returned non-zero exit code $?"
                 exit 1
             fi
         fi
-        raw_output=`pscale password create "$DB_NAME" "PR$CODEBUILD_SOURCE_VERSION" "$PS_ORG+creds" --org "$PS_ORG" --format json --service-token "$PS_TOKEN" --service-token-id "$PS_TOKEN_ID`
+        raw_output=`pscale password create "$DB_NAME" "PR${CODEBUILD_WEBHOOK_TRIGGER#*/}" "$PS_ORG+creds" --org "$PS_ORG" --format json --service-token "$PS_TOKEN" --service-token-id "$PS_TOKEN_ID`
         if [ $? -ne 0 ]; then
-            echo "Failed to create credentials for database $DB_NAME branch PR$CODEBUILD_SOURCE_VERSION: $raw_output"
+            echo "Failed to create credentials for database $DB_NAME branch PR${CODEBUILD_WEBHOOK_TRIGGER#*/}: $raw_output"
             exit 1
         fi
         DB_URL=`echo "$raw_output" |  jq -r ". | \"mysql://\" + .id +  \":\" + .plain_text +  \"@\" + .database_branch.access_host_url + \"/\""`
-        DR_NUM=$(pscale deploy-request create bookshop_api "PR$CODEBUILD_SOURCE_VERSION" --service-token $PS_TOKEN --service-token-id $PS_TOKEN_ID --org $PS_ORG --format json | jq '.number' )
+        DR_NUM=$(pscale deploy-request create bookshop_api "PR${CODEBUILD_WEBHOOK_TRIGGER#*/}" --service-token $PS_TOKEN --service-token-id $PS_TOKEN_ID --org $PS_ORG --format json | jq '.number' )
         DR_STATE=$(pscale deploy-request show bookshop_api $DR_NUM --service-token $PS_TOKEN --service-token-id $PS_TOKEN_ID --org $PS_ORG --format json | jq -r '.deployment.state')
         while [ "$DR_STATE" = "pending" ];
         do
