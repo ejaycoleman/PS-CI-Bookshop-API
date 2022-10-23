@@ -35,18 +35,18 @@ phases:
             exit 1
         fi
         DB_URL=`echo "$raw_output" |  jq -r ". | \"mysql://\" + .id +  \":\" + .plain_text +  \"@\" + .database_branch.access_host_url + \"/\""`
-        DR_NUM=$(pscale deploy-request create bookshop_api "pr${CODEBUILD_WEBHOOK_TRIGGER#*/}" --service-token $PS_TOKEN --service-token-id $PS_TOKEN_ID --org $PS_ORG --format json | jq '.number' )
-        DR_STATE=$(pscale deploy-request show bookshop_api $DR_NUM --service-token $PS_TOKEN --service-token-id $PS_TOKEN_ID --org $PS_ORG --format json | jq -r '.deployment.state')
+        DR_NUM=$(pscale deploy-request create $DB_NAME "pr${CODEBUILD_WEBHOOK_TRIGGER#*/}" --service-token $PS_TOKEN --service-token-id $PS_TOKEN_ID --org $PS_ORG --format json | jq '.number' )
+        DR_STATE=$(pscale deploy-request show $DB_NAME $DR_NUM --service-token $PS_TOKEN --service-token-id $PS_TOKEN_ID --org $PS_ORG --format json | jq -r '.deployment.state')
         while [ "$DR_STATE" = "pending" ];
         do
           sleep 5
-          DR_STATE=$(pscale deploy-request show bookshop_api $DR_NUM --service-token $PS_TOKEN --service-token-id $PS_TOKEN_ID --org $PS_ORG --format json | jq -r '.deployment.state')
+          DR_STATE=$(pscale deploy-request show $DB_NAME $DR_NUM --service-token $PS_TOKEN --service-token-id $PS_TOKEN_ID --org $PS_ORG --format json | jq -r '.deployment.state')
           echo "State: $DR_STATE"
         done
         if [ "$DR_STATE" = "no_changes" ]; then
-          pscale deploy-request close bookshop_api $DR_NUM --service-token $PS_TOKEN --service-token-id $PS_TOKEN_ID --org $PS_ORG
+          pscale deploy-request close $DB_NAME $DR_NUM --service-token $PS_TOKEN --service-token-id $PS_TOKEN_ID --org $PS_ORG
         else
-          pscale deploy-request deploy bookshop_api $DR_NUM --service-token $PS_TOKEN --service-token-id $PS_TOKEN_ID --org $PS_ORG
+          pscale deploy-request deploy $DB_NAME $DR_NUM --service-token $PS_TOKEN --service-token-id $PS_TOKEN_ID --org $PS_ORG
         fi
       # Deploy
       - |
